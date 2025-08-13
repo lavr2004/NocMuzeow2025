@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="be">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карта музеяў Варшавы з тэрмінамі бясплатных наведванняў</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Roboto', sans-serif;
+            color: #212529;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: row;
+        }
+        #map {
+            height: 100vh;
+            width: calc(100% - 250px);
+        }
+        .filter-panel {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            background-color: #fff;
+            z-index: 1000;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease-in-out;
+        }
+        .filter-panel.hidden {
+            transform: translateY(-100%);
+        }
+        .toggle-btn {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        .slider-label {
+            margin-right: 10px;
+        }
+        .slider {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.9;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .slider:hover {
+            opacity: 1;
+        }
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #007bff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+        }
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #007bff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        /* UPDATED: 202508130220_sidebar: ADDED - Стили для боковой панели */
+        #sidebar {
+            width: 250px;
+            height: 100vh;
+            background-color: #fff;
+            overflow-y: auto;
+            padding: 10px;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+            z-index: 999;
+            position: fixed;
+            right: 0;
+            top: 0;
+        }
+        .museum-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .museum-item:hover {
+            background-color: #f0f0f0;
+        }
+        .museum-item h5 {
+            margin: 0 0 5px 0;
+            color: green;
+        }
+        .museum-item table {
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="filter-panel" id="filterPanel">
+        <div class="container">
+            <h1>Карта музеяў Варшавы з тэрмінамі бясплатных наведванняў</h1>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="search-input">Пошук паводле назвы музея:</label>
+                        <input type="text" id="search-input" class="form-control" placeholder="Тэкст фільтрацыі">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label for="day-select">Фільтр паводле дня:</label>
+                        <select id="day-select" class="form-select">
+                            <option value="all">Усе дні</option>
+                            <option value="Monday">Панядзелак</option>
+                            <option value="Tuesday">Аўторак</option>
+                            <option value="Wednesday">Серада</option>
+                            <option value="Thursday">Чацвер</option>
+                            <option value="Friday">Пятніца</option>
+                            <option value="Saturday">Субота</option>
+                            <option value="Sunday">Нядзеля</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="mb-3">
+                        <label class="slider-label" for="time-slider">Час (гадзіна):</label>
+                        <input id="time-slider" class="slider" type="range" min="0" max="23" step="1" value="12">
+                        <span id="time-value">12:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button class="toggle-btn" id="toggleBtn">▼</button>
+    </div>
+    <div id="map"></div>
+    <!-- UPDATED: 202508130220_sidebar: ADDED - Боковая панель для списка музеев -->
+    <div id="sidebar"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        const museums = [{"name": "Muzeum Powstania Warszawskiego", "website": "https://www.1944.pl/", "address": "ul. Grzybowska 79", "schedule": {"Monday": {"intervals": [["09:00", "18:00"]], "isClosed": false}}, "lat": 52.2328232, "lon": 20.981009477987016}, {"name": "Stacja Muzeum", "website": "https://stacjamuzeum.pl/", "address": "ul. Towarowa 3", "schedule": {"Monday": {"intervals": [["09:00", "17:00"]], "isClosed": false}}, "lat": 52.2264294, "lon": 20.987053}, {"name": "Muzeum Legii Warszawa", "website": "https://legia.com/muzeum-legii", "address": "ul. \u0141azienkowska 3", "schedule": {"Monday": {"intervals": [["11:00", "17:00"]], "isClosed": false}, "Tuesday": {"intervals": [["11:00", "17:00"]], "isClosed": false}, "Wednesday": {"intervals": [["11:00", "17:00"]], "isClosed": false}, "Thursday": {"intervals": [["11:00", "17:00"]], "isClosed": false}, "Friday": {"intervals": [["11:00", "17:00"]], "isClosed": false}}, "lat": 52.2213462, "lon": 21.0409616}, {"name": "\u017bydowski Instytut Historyczny", "website": "https://www.jhi.pl/", "address": "ul. T\u0142omackie 3/5", "schedule": {"Monday": {"intervals": [["09:00", "18:00"]], "isClosed": false}}, "lat": 52.2442541, "lon": 21.0029839}, {"name": "Muzeum Geologiczne", "website": "https://www.pgi.gov.pl/muzeum/", "address": "ul. Rakowiecka 4", "schedule": {"Monday": {"intervals": [["09:00", "17:30"]], "isClosed": false}, "Tuesday": {"intervals": [["09:00", "17:30"]], "isClosed": false}, "Wednesday": {"intervals": [["09:00", "17:30"]], "isClosed": false}, "Thursday": {"intervals": [["09:00", "17:30"]], "isClosed": false}, "Friday": {"intervals": [["09:00", "17:30"]], "isClosed": false}, "Sunday": {"intervals": [["10:00", "15:00"]], "isClosed": false}}, "lat": 52.21002985, "lon": 21.01260937572883}, {"name": "Muzeum Narodowe", "website": "https://www.mnw.art.pl/", "address": "Al. Jerozolimskie 3", "schedule": {"Tuesday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.2316938, "lon": 21.0247708}, {"name": "Muzeum Marii Sk\u0142odowskiej-Curie", "website": "https://www.mmsc.waw.pl/", "address": "ul. Freta 16", "schedule": {"Tuesday": {"intervals": [["12:00", "18:00"]], "isClosed": false}}, "lat": 52.2514555, "lon": 21.0085289}, {"name": "Muzeum Karykatury", "website": "https://www.muzeumkarykatury.pl/", "address": "ul. Kozia 11", "schedule": {"Tuesday": {"intervals": [["10:00", "13:00"], ["14:00", "18:00"]], "isClosed": false}}, "lat": 52.24498905, "lon": 21.0131779096831}, {"name": "Centrum Pieni\u0105dza NBP", "website": "https://cp.nbp.pl/", "address": "ul. \u015awi\u0119tokrzyska 11/21", "schedule": {"Tuesday": {"intervals": [["10:00", "18:00"]], "isClosed": false}, "Wednesday": {"intervals": [["10:00", "18:00"]], "isClosed": false}, "Thursday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Friday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Saturday": {"intervals": [["10:00", "18:00"]], "isClosed": false}, "Sunday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.23575515, "lon": 21.015082242698163}, {"name": "Dom Spotka\u0144 z Histori\u0105", "website": "https://dsh.waw.pl/", "address": "ul. Karowa 20", "schedule": {"Tuesday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Wednesday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Thursday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Friday": {"intervals": [["10:00", "20:00"]], "isClosed": false}, "Saturday": {"intervals": [["12:00", "20:00"]], "isClosed": false}, "Sunday": {"intervals": [["12:00", "20:00"]], "isClosed": false}}, "lat": 52.2423949, "lon": 21.0167091}, {"name": "Narodowe Muzeum Techniki", "website": "https://nmt.waw.pl/", "address": "Defilad 1", "schedule": {"Tuesday": {"intervals": [["10:00", "20:00"]], "isClosed": false}}, "lat": 52.232212, "lon": 21.0059275}, {"name": "Muzeum Ziemi", "website": "https://mz.pan.pl/", "address": "Na Skarpie 20/26", "schedule": {"Tuesday": {"intervals": [["09:00", "16:00"]], "isClosed": false}}, "lat": 52.22899835, "lon": 21.028620941454008}, {"name": "Zamek Kr\u00f3lewski", "website": "https://www.zamek-krolewski.pl/", "address": "Plac Zamkowy 4", "schedule": {"Wednesday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.2477679, "lon": 21.0141379}, {"name": "Muzeum Fryderyka Chopina", "website": "https://muzeum.nifc.pl/", "address": "ul. Ok\u00f3lnik 1", "schedule": {"Wednesday": {"intervals": [["11:00", "19:00"]], "isClosed": true}}, "lat": 52.2364733, "lon": 21.0229197}, {"name": "Muzeum Katy\u0144skie", "website": "https://www.muzeumkatynskie.pl/", "address": "ul. Jana Jeziora\u0144skiego 4", "schedule": {"Wednesday": {"intervals": [["10:00", "16:00"]], "isClosed": false}, "Thursday": {"intervals": [["10:00", "16:00"]], "isClosed": false}, "Friday": {"intervals": [["10:00", "16:00"]], "isClosed": false}, "Saturday": {"intervals": [["10:00", "16:00"]], "isClosed": false}, "Sunday": {"intervals": [["10:00", "16:00"]], "isClosed": false}}, "lat": 52.26095195, "lon": 21.003025792484173}, {"name": "Muzeum Pa\u0142acu Kr\u00f3la Jana III w Wilanowie", "website": "https://wilanow-palac.pl/", "address": "ul. Stanis\u0142awa Kostki Potockiego 10/16", "schedule": {"Thursday": {"intervals": [["10:00", "16:00"]], "isClosed": false}}, "lat": 52.1647841, "lon": 21.0896685}, {"name": "Muzeum Historii \u017byd\u00f3w Polskich POLIN", "website": "https://polin.pl/pl", "address": "ul. Mordechaja Anielewicza 6", "schedule": {"Thursday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.24923, "lon": 20.992916}, {"name": "Muzeum Warszawy", "website": "https://artmuseum.pl/", "address": "Rynek Starego Miasta 28", "schedule": {"Thursday": {"intervals": [["11:00", "20:00"]], "isClosed": false}}, "lat": 52.2502838, "lon": 21.0119882}, {"name": "Centrum Interpretacji Zabytk\u00f3w", "website": "https://ciz.muzeumwarszawy.pl/", "address": "ul. Brzozowa 11/13", "schedule": {"Thursday": {"intervals": [["11:00", "20:00"]], "isClosed": false}}, "lat": 52.2501917, "lon": 21.0130981}, {"name": "Muzeum Warszawskiej Pragi", "website": "https://muzeumpragi.pl/", "address": "ul. Targowa 50/52", "schedule": {"Thursday": {"intervals": [["11:00", "20:00"]], "isClosed": false}}, "lat": 52.2516132, "lon": 21.0393123}, {"name": "Fotoplastikon Warszawski", "website": "http://fotoplastikonwarszawski.pl/", "address": "Al. Jerozolimskie 51", "schedule": {"Thursday": {"intervals": [["10:00", "18:00"]], "isClosed": true}}, "lat": 52.2289174, "lon": 21.0085131}, {"name": "Centrum Sztuki Wsp\u00f3\u0142czesnej Zamek Ujazdowski", "website": "https://u-jazdowski.pl/", "address": "ul. Jazd\u00f3w 2", "schedule": {"Thursday": {"intervals": [["12:00", "20:00"]], "isClosed": false}}, "lat": 52.219515, "lon": 21.031058034510068}, {"name": "Pa\u0144stwowe Muzeum Etnograficzne", "website": "https://ethnomuseum.pl/", "address": "ul. Kredytowa 1", "schedule": {"Thursday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.23792535, "lon": 21.01177461442969}, {"name": "Muzeum X Pawilonu Cytadeli Warszawskiej", "website": "https://muzn.pl/", "address": "ul. Skaza\u0144c\u00f3w 25", "schedule": {"Thursday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.26653785, "lon": 21.001304728364996}, {"name": "Muzeum Wojska Polskiego", "website": "https://muzeumwp.pl/", "address": "Al. Jerozolimskie 3", "schedule": {"Thursday": {"intervals": [["10:00", "16:00"]], "isClosed": false}}, "lat": 52.2316938, "lon": 21.0247708}, {"name": "Zach\u0119ta Narodowa Galeria Sztuki", "website": "https://zacheta.art.pl/", "address": "pl. Ma\u0142achowskiego 3", "schedule": {"Thursday": {"intervals": [["12:00", "20:00"]], "isClosed": false}}, "lat": 52.2393863, "lon": 21.0110601}, {"name": "Muzeum Rze\u017aby im. Xawerego Dunikowskiego", "website": "https://krolikarnia.mnw.art.pl/", "address": "Pu\u0142awska 113a", "schedule": {"Thursday": {"intervals": [["12:00", "20:00"]], "isClosed": false}}, "lat": 52.1891, "lon": 21.028252}, {"name": "Muzeum Jana Paw\u0142a II i Prymasa Wyszy\u0144skiego", "website": "", "address": "Prymasa Augusta Hlonda 1", "schedule": {"Thursday": {"intervals": [["12:00", "19:00"]], "isClosed": false}}, "lat": 52.1595517, "lon": 21.0709282}, {"name": "Muzeum Ordynariatu Polowego", "website": "", "address": "D\u0142uga 13/15", "schedule": {"Thursday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.2489378, "lon": 21.0067127}, {"name": "Muzeum Azji i Pacyfiku", "website": "", "address": "Solec 24", "schedule": {"Thursday": {"intervals": [["12:00", "18:00"]], "isClosed": false}}, "lat": 52.2337248, "lon": 21.0364901}, {"name": "Muzeum Farmacji", "website": "", "address": "Piwna 31/33", "schedule": {"Thursday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.2490905, "lon": 21.0114523}, {"name": "Muzeum Polskiej Techniki Wojskowej", "website": "", "address": "Powsi\u0144ska 13", "schedule": {"Thursday": {"intervals": [["10:00", "16:00"]], "isClosed": false}}, "lat": 52.182564549999995, "lon": 21.06799097481173}, {"name": "Muzeum Wi\u0119zienia Pawiak", "website": "", "address": "ul. Dzielna 24/26", "schedule": {"Thursday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.24627865, "lon": 20.990977768126577}, {"name": "Muzeum Niepodleg\u0142o\u015bci", "website": "", "address": "aleja Solidarno\u015bci 62", "schedule": {"Thursday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.2453236, "lon": 21.004051}, {"name": "Mauzoleum Walki i M\u0119cze\u0144stwa", "website": "", "address": "aleja Jana Chrystiana Szucha 25", "schedule": {"Thursday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.2177075, "lon": 21.0237606}, {"name": "Muzeum Drukarstwa", "website": "", "address": "Z\u0105bkowska 23/25", "schedule": {"Thursday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.2540688, "lon": 21.0422566}, {"name": "Muzeum Woli", "website": "", "address": "Srebrna 12", "schedule": {"Thursday": {"intervals": [["11:00", "20:00"]], "isClosed": false}}, "lat": 52.2278836, "lon": 20.9897384}, {"name": "Muzeum \u0141azienki Kr\u00f3lewskie", "website": "", "address": "ul. Agrykola 1", "schedule": {"Friday": {"intervals": [["10:00", "18:00"]], "isClosed": false}}, "lat": 52.2150611, "lon": 21.035752}, {"name": "Muzeum Sportu i Turystyki", "website": "", "address": "ul. Wybrze\u017ce Gdy\u0144skie 4", "schedule": {"Saturday": {"intervals": [["10:00", "17:00"]], "isClosed": false}}, "lat": 52.2740314, "lon": 20.9969624}, {"name": "Muzeum Literatury", "website": "https://muzeumliteratury.pl/", "address": "Rynek Starego Miasta 20", "schedule": {"Sunday": {"intervals": [["11:00", "18:00"]], "isClosed": false}}, "lat": 52.25024845, "lon": 21.012443930173106}];
+
+        const map = L.map('map').setView([52.229676, 21.012229], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19}).addTo(map);
+
+        let markers = [];
+        let selectedMarker = null;
+
+        function timeToMin(t) {
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function isOpenAt(timeMin, intervals) {
+            for (let [start, end] of intervals) {
+                const startMin = timeToMin(start);
+                const endMin = timeToMin(end);
+                if (startMin <= timeMin && timeMin < endMin) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // UPDATED: 202508130211_localization: ADDED - Слоўнік для перакладу
+        const dayTranslations = {
+            'Monday': 'Панядзелак',
+            'Tuesday': 'Аўторак',
+            'Wednesday': 'Серада',
+            'Thursday': 'Чацвер',
+            'Friday': 'Пятніца',
+            'Saturday': 'Субота',
+            'Sunday': 'Нядзеля'
+        };
+
+        function buildPopup(mus) {
+            let html = '<b><h4 style="color:green">' + (mus.website ? '<a href="' + mus.website + '" target="_blank">' + mus.name + '</a>' : mus.name) + '</h4></b><br>';
+            html += '<b>Адрэса: </b>' + mus.address + '<br><br>';
+            html += '<table class="table"><thead><tr><th>Бясплатны Дзень</th><th>Час</th></tr></thead><tbody>';
+            for (let day in mus.schedule) {
+                let sch = mus.schedule[day];
+                if (!sch.isClosed) {
+                    let times = sch.intervals.map(i => i[0] + '-' + i[1]).join(', ');
+                    // UPDATED: 202508130211_localization: REPLACED - Пераклад
+                    html += '<tr><td>' + dayTranslations[day] + '</td><td>' + times + '</td></tr>';
+                }
+            }
+            html += '</tbody></table>';
+            return html;
+        }
+
+        // UPDATED: 202508130220_sidebar: ADDED - Функцыя кіравання бакавым панэлем
+        function updateSidebar(filteredMuseums) {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = '';
+            filteredMuseums.forEach((mus, index) => {
+                const item = document.createElement('div');
+                item.className = 'museum-item';
+                item.setAttribute('data-index', index);
+                item.innerHTML = '<h5>' + (mus.website ? '<a href="' + mus.website + '" target="_blank">' + mus.name + '</a>' : mus.name) + '</h5>' +
+                                 '<p><b>Адрэса: </b>' + mus.address + '</p>' +
+                                 '<table class="table table-sm"><thead><tr><th>Дзень</th><th>Час</th></tr></thead><tbody>' +
+                                 Object.keys(mus.schedule).map(day => {
+                                     let sch = mus.schedule[day];
+                                     if (!sch.isClosed) {
+                                         let times = sch.intervals.map(i => i[0] + '-' + i[1]).join(', ');
+                                         return '<tr><td>' + dayTranslations[day] + '</td><td>' + times + '</td></tr>';
+                                     }
+                                     return '';
+                                 }).join('') +
+                                 '</tbody></table>';
+                item.addEventListener('click', () => {
+                    const marker = markers[index];
+                    if (marker) {
+                        // Скідваем колер маркераў на сіні
+                        markers.forEach(m => {
+                            m.setIcon(L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34],
+                                shadowSize: [41, 41]
+                            }));
+                        });
+                        // Усталёўваем чырвоны колер маркера
+                        marker.setIcon(L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        }));
+                        selectedMarker = marker;
+                        map.setView([mus.lat, mus.lon], 15); // цэнтруем мапу
+                        marker.openPopup(); // адчыняем попап
+                    }
+                });
+                sidebar.appendChild(item);
+            });
+        }
+
+        function addMarkers(searchText = '', selectedDay = 'all', hour = 12) {
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            const timeMin = hour * 60;
+            const filteredMuseums = [];
+            museums.forEach(mus => {
+                const nameLower = mus.name.toLowerCase();
+                const searchLower = searchText.toLowerCase();
+                let show = (searchLower === '' || nameLower.includes(searchLower));
+                if (selectedDay !== 'all') {
+                    const sch = mus.schedule[selectedDay];
+                    show = show && sch && !sch.isClosed && isOpenAt(timeMin, sch.intervals);
+                }
+                if (show) {
+                    const marker = L.marker([mus.lat, mus.lon], {
+                        icon: L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
+                        })
+                    }).addTo(map);
+                    marker.bindPopup(buildPopup(mus));
+                    markers.push(marker);
+                    filteredMuseums.push(mus);
+                }
+            });
+            updateSidebar(filteredMuseums);
+        }
+
+        function updateFilters() {
+            const searchText = document.getElementById('search-input').value;
+            const selectedDay = document.getElementById('day-select').value;
+            const hour = parseInt(document.getElementById('time-slider').value, 10);
+            document.getElementById('time-value').textContent = `${hour}:00`;
+            addMarkers(searchText, selectedDay, hour);
+        }
+
+        document.getElementById('search-input').addEventListener('input', updateFilters);
+        document.getElementById('day-select').addEventListener('change', updateFilters);
+        document.getElementById('time-slider').addEventListener('input', updateFilters);
+
+        const filterPanel = document.getElementById('filterPanel');
+        const toggleBtn = document.getElementById('toggleBtn');
+        toggleBtn.addEventListener('click', () => {
+            filterPanel.classList.toggle('hidden');
+            toggleBtn.textContent = filterPanel.classList.contains('hidden') ? '▼' : '▲';
+        });
+
+        addMarkers('', 'all', 12);
+    </script>
+</body>
+</html>
